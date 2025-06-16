@@ -198,11 +198,6 @@ export type TrimEnd<A extends string> = A extends `${infer B}${" " | "\n" | "\t"
  */
 export const trimEnd = <A extends string>(self: A): TrimEnd<A> => self.trimEnd() as TrimEnd<A>
 
-export const dedent = (self: string): string => {
-  // TODO: Implement dedent
-  return self
-}
-
 /**
  * @example
  * ```ts

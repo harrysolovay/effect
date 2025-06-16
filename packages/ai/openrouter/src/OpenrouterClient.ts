@@ -18,13 +18,14 @@ import * as Option from "effect/Option"
 import type { ParseError } from "effect/ParseResult"
 import * as Predicate from "effect/Predicate"
 import type * as Redacted from "effect/Redacted"
+import type * as Schema from "effect/Schema"
 import * as Stream from "effect/Stream"
 import type { Mutable } from "effect/Types"
 import * as EventStreamEncoding from "./EventStreamEncoding.js"
 import * as InternalUtilities from "./internal/utilities.js"
 import type { ProviderMetadata } from "./OpenrouterLanguageModel.js"
-import type { ChatCompletionRequestBody, ConverseRequest } from "./OpenrouterSchema.js"
-import { ChatCompletionResponseBody, ConverseStreamResponse } from "./OpenrouterSchema.js"
+import type { ChatRequest } from "./OpenrouterSchema.js"
+import { ChatResponse } from "./OpenrouterSchema.js"
 
 const constDisableValidation = { disableValidation: true } as const
 
@@ -46,11 +47,11 @@ export declare namespace OpenrouterClient {
    */
   export interface Service {
     readonly client: Client
-    readonly streamRequest: (request: typeof ConverseRequest.Encoded) => Stream.Stream<
-      ConverseStreamResponse,
+    readonly streamRequest: (request: typeof ChatRequest.Encoded) => Stream.Stream<
+      Schema.Unknown, // TODO
       HttpClientError.HttpClientError | ParseError
     >
-    readonly stream: (request: typeof ConverseRequest.Encoded) => Stream.Stream<
+    readonly stream: (request: typeof ChatRequest.Encoded) => Stream.Stream<
       AiResponse.AiResponse,
       HttpClientError.HttpClientError | ParseError
     >
@@ -62,10 +63,10 @@ export declare namespace OpenrouterClient {
    */
   export interface Client {
     readonly converse: (
-      options: typeof ChatCompletionRequestBody.Encoded
-    ) => Effect.Effect<typeof ChatCompletionResponseBody.Type, HttpClientError.HttpClientError | ParseError>
+      options: typeof ChatRequest.Encoded
+    ) => Effect.Effect<typeof ChatResponse.Type, HttpClientError.HttpClientError | ParseError>
     readonly converseStream: (
-      options: typeof ConverseRequest.Encoded
+      options: typeof ChatRequest.Encoded
     ) => Effect.Effect<HttpClientResponse.HttpClientResponse, HttpClientError.HttpClientError | ParseError>
   }
 }
@@ -342,14 +343,14 @@ const makeClient = (
             Effect.flatMap(
               httpClient.execute(request),
               HttpClientResponse.matchStatus({
-                "200": (response) => HttpClientResponse.schemaBodyJson(ChatCompletionResponseBody)(response),
+                "200": (response) => HttpClientResponse.schemaBodyJson(ChatResponse)(response),
                 orElse: (response) => unexpectedStatus(request, response)
               })
             ))
         )
       ),
-    converseStream: ({ modelId, ...payload }) =>
-      HttpClientRequest.make("POST")(`/model/${modelId}/converse-stream`).pipe(
+    converseStream: (payload) =>
+      HttpClientRequest.make("POST")(`/chat/completions`).pipe(
         (request) => Effect.orDie(HttpClientRequest.bodyJson(request, payload)),
         Effect.flatMap((request) =>
           Effect.flatMap(applyClientTransform(httpClient), (httpClient) =>

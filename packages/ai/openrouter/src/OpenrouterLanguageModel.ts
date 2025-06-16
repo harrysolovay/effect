@@ -21,7 +21,7 @@ import type { Mutable, Simplify } from "effect/Types"
 import * as InternalUtilities from "./internal/utilities.js"
 import { OpenrouterClient } from "./OpenrouterClient.js"
 import type {
-  ChatCompletionRequestBody,
+  ChatRequest,
   ContentBlock,
   ConverseMetrics,
   ConverseRequest,
@@ -151,10 +151,10 @@ export const make = Effect.fnUntraced(function*(options: {
 
       const messages = yield* makeMessages(method, prompt)
 
-      return identity<typeof ChatCompletionRequestBody.Encoded>({
+      return identity<typeof ChatRequest.Encoded>({
         modelId: options.model,
-        ...options.config,
-        ...context.unsafeMap.get(Config.key),
+        // ...options.config,
+        // ...context.unsafeMap.get(Config.key),
         // TODO: re-evaluate a better way to do this
         system: Option.getOrUndefined(system),
         messages,
@@ -311,58 +311,6 @@ const makeMessages = Effect.fnUntraced(
       switch (group.type) {
         case "assistant": {
           const content: Array<typeof ContentBlock.Encoded> = []
-          for (let j = 0; j < group.messages.length; j++) {
-            const message = group.messages[j]
-            const isLastMessage = j === group.messages.length - 1
-            for (let k = 0; k < message.parts.length; k++) {
-              const part = message.parts[k]
-              const isLastPart = k === message.parts.length - 1
-              switch (part._tag) {
-                case "TextPart": {
-                  content.push({
-                    text: trimIfLast(
-                      isLastGroup,
-                      isLastMessage,
-                      isLastPart,
-                      part.text
-                    )
-                  })
-                  break
-                }
-                case "ReasoningPart": {
-                  content.push({
-                    reasoningContent: {
-                      reasoningText: {
-                        text: trimIfLast(
-                          isLastGroup,
-                          isLastMessage,
-                          isLastPart,
-                          part.reasoningText
-                        ),
-                        signature: part.signature
-                      }
-                    }
-                  })
-                  break
-                }
-                case "RedactedReasoningPart": {
-                  const redactedContent = Encoding.encodeBase64(part.redactedText)
-                  content.push({ reasoningContent: { redactedContent } })
-                  break
-                }
-                case "ToolCallPart": {
-                  content.push({
-                    toolUse: {
-                      toolUseId: part.id,
-                      name: part.name,
-                      input: part.params
-                    }
-                  })
-                  break
-                }
-              }
-            }
-          }
           messages.push({ role: "assistant", content })
           break
         }

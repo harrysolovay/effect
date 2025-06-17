@@ -128,14 +128,14 @@ export const make = (options: {
       // )
     })
 
-    const streamRequest = (request: typeof ConverseRequest.Encoded) =>
+    const streamRequest = (request: typeof ChatRequest.Encoded) =>
       client.converseStream(request).pipe(
         Effect.map((response) => response.stream),
         Stream.unwrap,
         Stream.pipeThroughChannel(EventStreamEncoding.makeChannel(ConverseStreamResponse))
       )
 
-    const stream = (request: typeof ConverseRequest.Encoded) =>
+    const stream = (request: typeof ChatRequest.Encoded) =>
       Stream.suspend(() => {
         const toolCalls = {} as Record<number, RawToolCall>
         let reasoningText: string | undefined = undefined

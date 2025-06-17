@@ -458,7 +458,13 @@ export class ResponseFormat extends Schema.Union(
  * @since 1.0.0
  * @category Schemas
  */
-export class Stop extends Schema.Union(Schema.String, Schema.Array(Schema.String)) {}
+export class StopReason extends Schema.Literal("tool_calls", "stop", "length", "content_filter", "error") {}
+
+/**
+ * @since 1.0.0
+ * @category Schemas
+ */
+export class Stop extends Schema.Union(StopReason, Schema.Array(StopReason)) {}
 
 /**
  * @since 1.0.0
@@ -531,12 +537,6 @@ export class ChatRequest extends Schema.Class<Request>(makeIdentifier("ChatReque
  * @since 1.0.0
  * @category Schemas
  */
-export class FinishReason extends Schema.Literal("tool_calls", "stop", "length", "content_filter", "error") {}
-
-/**
- * @since 1.0.0
- * @category Schemas
- */
 export class ErrorResponse extends Schema.Class<ErrorResponse>(makeIdentifier("ErrorResponse"))({
   code: Schema.Int,
   message: Schema.String,
@@ -584,7 +584,7 @@ export class ToolCall extends Schema.Class<ToolCall>(makeIdentifier("ToolCall"))
  * @category Schemas
  */
 export class NonStreamingChoice extends Schema.Class<NonStreamingChoice>(makeIdentifier("NonStreamingChoice"))({
-  finish_reason: Schema.Union(Schema.String, Schema.Null),
+  finish_reason: Schema.Union(Stop, Schema.Null),
   native_finish_reason: Schema.Union(Schema.String, Schema.Null),
   message: Schema.Struct({
     content: Schema.Union(Schema.String, Schema.Null),
@@ -599,7 +599,7 @@ export class NonStreamingChoice extends Schema.Class<NonStreamingChoice>(makeIde
  * @category Schemas
  */
 export class StreamingChoice extends Schema.Class<StreamingChoice>(makeIdentifier("StreamingChoice"))({
-  finish_reason: Schema.Union(Schema.String, Schema.Null),
+  finish_reason: Schema.Union(Stop, Schema.Null),
   native_finish_reason: Schema.Union(Schema.String, Schema.Null),
   delta: Schema.Struct({
     content: Schema.Union(Schema.String, Schema.Null),
@@ -614,7 +614,7 @@ export class StreamingChoice extends Schema.Class<StreamingChoice>(makeIdentifie
  * @category Schemas
  */
 export class NonChatChoice extends Schema.Class<NonChatChoice>(makeIdentifier("NonChatChoice"))({
-  finish_reason: Schema.Union(Schema.String, Schema.Null),
+  finish_reason: Schema.Union(Stop, Schema.Null),
   text: Schema.String,
   error: Schema.optional(ErrorResponse)
 }) {}

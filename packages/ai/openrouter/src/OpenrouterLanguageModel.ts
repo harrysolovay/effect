@@ -7,11 +7,12 @@ import * as AiLanguageModel from "@effect/ai/AiLanguageModel"
 import * as AiModel from "@effect/ai/AiModel"
 import * as AiResponse from "@effect/ai/AiResponse"
 import { addGenAIAnnotations } from "@effect/ai/AiTelemetry"
+import { Array, Schema } from "effect"
 import * as Arr from "effect/Array"
 import * as Context from "effect/Context"
 import * as Effect from "effect/Effect"
 import * as Encoding from "effect/Encoding"
-import { dual, identity } from "effect/Function"
+import { absurd, dual, identity } from "effect/Function"
 import * as Layer from "effect/Layer"
 import * as Option from "effect/Option"
 import * as Predicate from "effect/Predicate"
@@ -20,19 +21,16 @@ import type { Span } from "effect/Tracer"
 import type { Mutable, Simplify } from "effect/Types"
 import * as InternalUtilities from "./internal/utilities.js"
 import { OpenrouterClient } from "./OpenrouterClient.js"
-import type {
-  ChatRequest,
-  ContentBlock,
-  ConverseMetrics,
-  ConverseRequest,
-  ConverseResponse,
-  ConverseTrace,
-  DocumentFormat,
-  ImageFormat,
-  KnownModelId,
-  Message,
-  PerformanceConfiguration,
-  ToolChoice
+import {
+  type ChatRequest,
+  type ChatResponse,
+  type ContentPart,
+  type KnownModelId,
+  type Message,
+  type ModelId,
+  NonStreamingChoice,
+  type StopReason,
+  type ToolChoice
 } from "./OpenrouterSchema.js"
 
 const constDisableValidation = { disableValidation: true }
@@ -52,7 +50,7 @@ export type Model = typeof KnownModelId.Encoded
  * @category Context
  */
 export class Config extends Context.Tag(
-  "@effect/ai-amazon-bedrock/OpenrouterLanguageModel/Config"
+  "@effect/ai-openrouter/OpenrouterLanguageModel/Config"
 )<Config, Config.Service>() {
   /**
    * @since 1.0.0
@@ -71,20 +69,14 @@ export declare namespace Config {
    * @since 1.0.0
    * @category Configuration
    */
-  export interface Service extends
-    Simplify<
-      Partial<
-        Omit<
-          typeof ConverseRequest.Encoded,
-          "messages" | "system" | "toolConfig"
-        >
-      >
-    >
-  {}
+  export interface Service {
+    // TODO
+    modelId: typeof ModelId.Encoded
+  }
 }
 
 // =============================================================================
-// Amazon Bedrock Provider Metadata
+// Open Router Provider Metadata
 // =============================================================================
 
 /**
@@ -104,15 +96,11 @@ export declare namespace ProviderMetadata {
    * @since 1.0.0
    * @category Provider Metadata
    */
-  export interface Service {
-    readonly metrics: ConverseMetrics
-    readonly trace?: ConverseTrace
-    readonly performanceConfig?: PerformanceConfiguration
-  }
+  export interface Service {} // TODO
 }
 
 // =============================================================================
-// Amazon Bedrock Language Model
+// Open Router Language Model
 // =============================================================================
 
 /**
@@ -135,39 +123,37 @@ export const make = Effect.fnUntraced(function*(options: {
   const client = yield* OpenrouterClient
 
   const makeRequest = Effect.fnUntraced(
-    function*(method: string, { prompt, system, toolChoice, tools }: AiLanguageModel.AiLanguageModelOptions) {
-      const context = yield* Effect.context<never>()
-      const useStructured = tools.length === 1 && tools[0].structured
-      let tool_choice: typeof ToolChoice.Encoded = { auto: {} }
-      if (useStructured) {
-        tool_choice = { tool: { name: tools[0].name } }
-      } else if (tools.length > 0) {
-        if (toolChoice === "required") {
-          tool_choice = { any: {} }
-        } else if (typeof toolChoice === "object") {
-          tool_choice = { tool: { name: toolChoice.tool } }
-        }
-      }
+    function*(method: string, { prompt, system /* toolChoice, tools */ }: AiLanguageModel.AiLanguageModelOptions) {
+      // const context = yield* Effect.context<never>()
+      // const useStructured = tools.length === 1 && tools[0].structured
+      // let tool_choice: typeof ToolChoice.Encoded = { auto: {} }
+      // if (useStructured) {
+      //   tool_choice = { tool: { name: tools[0].name } }
+      // } else if (tools.length > 0) {
+      //   if (toolChoice === "required") {
+      //     tool_choice = { any: {} }
+      //   } else if (typeof toolChoice === "object") {
+      //     tool_choice = { tool: { name: toolChoice.tool } }
+      //   }
+      // }
 
-      const messages = yield* makeMessages(method, prompt)
+      const messages = yield* makeMessages(method, Option.getOrUndefined(system), prompt)
 
       return identity<typeof ChatRequest.Encoded>({
-        modelId: options.model,
+        model: options.model,
         // ...options.config,
         // ...context.unsafeMap.get(Config.key),
-        // TODO: re-evaluate a better way to do this
-        system: Option.getOrUndefined(system),
-        messages,
-        toolConfig: tools.length === 0 ? undefined : {
-          toolChoice: tool_choice,
-          tools: tools.map((tool) => ({
-            toolSpec: {
-              name: tool.name,
-              description: tool.description,
-              inputSchema: { json: tool.parameters }
-            }
-          }))
-        }
+        messages
+        // toolConfig: tools.length === 0 ? undefined : {
+        //   toolChoice: tool_choice,
+        //   tools: tools.map((tool) => ({
+        //     toolSpec: {
+        //       name: tool.name,
+        //       description: tool.description,
+        //       inputSchema: { json: tool.parameters }
+        //     }
+        //   }))
+        // }
       })
     }
   )
@@ -299,37 +285,47 @@ const groupMessages = (prompt: AiInput.AiInput): Array<MessageGroup> => {
   return messages
 }
 
-let fileCounter = 0
+// const fileCounter = 0
 
 const makeMessages = Effect.fnUntraced(
-  function*(method: string, prompt: AiInput.AiInput) {
+  function*(
+    method: string,
+    system: string | undefined,
+    prompt: AiInput.AiInput
+  ) {
     const messages: Array<typeof Message.Encoded> = []
+    if (system) {
+      messages.push({
+        role: "system",
+        content: system
+      })
+    }
     const groups = groupMessages(prompt)
     for (let i = 0; i < groups.length; i++) {
       const group = groups[i]
-      const isLastGroup = i === groups.length - 1
       switch (group.type) {
         case "assistant": {
-          const content: Array<typeof ContentBlock.Encoded> = []
+          const content: Array<typeof ContentPart.Encoded> = []
           messages.push({ role: "assistant", content })
           break
         }
         case "user": {
-          const content: Array<typeof ContentBlock.Encoded> = []
+          const content: Array<typeof ContentPart.Encoded> = []
           for (let j = 0; j < group.messages.length; j++) {
             const message = group.messages[j]
             switch (message._tag) {
               case "ToolMessage": {
-                for (let k = 0; k < message.parts.length; k++) {
-                  const part = message.parts[k]
-                  // TODO: support advanced tool result content parts
-                  content.push({
-                    toolResult: {
-                      toolUseId: part.id,
-                      content: [{ text: JSON.stringify(part.result) }]
-                    }
-                  })
-                }
+                // TODO:
+                // for (let k = 0; k < message.parts.length; k++) {
+                // const part = message.parts[k]
+                // TODO: support advanced tool result content parts
+                // content.push({
+                //   toolResult: {
+                //     toolUseId: part.id,
+                //     content: [{ text: JSON.stringify(part.result) }]
+                //   }
+                // })
+                // }
                 break
               }
               case "UserMessage": {
@@ -337,21 +333,10 @@ const makeMessages = Effect.fnUntraced(
                   const part = message.parts[k]
                   switch (part._tag) {
                     case "FilePart": {
-                      if (Predicate.isUndefined(part.mediaType)) {
-                        return yield* new AiError({
-                          module: "OpenrouterLanguageModel",
-                          method,
-                          description: "No media type specified for image"
-                        })
-                      }
-                      content.push({
-                        document: {
-                          name: part.name ?? `file-${fileCounter++}`,
-                          format: part.mediaType.split("/")?.[1] as DocumentFormat,
-                          source: {
-                            bytes: Encoding.encodeBase64(part.data)
-                          }
-                        }
+                      return yield* new AiError({
+                        module: "OpenrouterLanguageModel",
+                        method,
+                        description: "FilePart is not supported at this time"
                       })
                       break
                     }
@@ -364,21 +349,19 @@ const makeMessages = Effect.fnUntraced(
                       })
                     }
                     case "ImagePart": {
-                      if (Predicate.isUndefined(part.mediaType)) {
-                        return yield* new AiError({
-                          module: "OpenrouterLanguageModel",
-                          method,
-                          description: "No media type specified for image"
-                        })
-                      }
-                      content.push({
-                        image: {
-                          format: part.mediaType.split("/")?.[1] as ImageFormat,
-                          source: {
-                            bytes: Encoding.encodeBase64(part.data)
-                          }
-                        }
+                      return yield* new AiError({
+                        module: "OpenrouterLanguageModel",
+                        method,
+                        description: "Image parts are not supported at this time"
                       })
+                      // content.push({
+                      //   image: {
+                      //     format: part.mediaType.split("/")?.[1] as ImageFormat,
+                      //     source: {
+                      //       bytes: Encoding.encodeBase64(part.data)
+                      //     }
+                      //   }
+                      // })
                       break
                     }
                     case "ImageUrlPart": {
@@ -391,6 +374,7 @@ const makeMessages = Effect.fnUntraced(
                     }
                     case "TextPart": {
                       content.push({
+                        type: "text",
                         text: part.text
                       })
                       break
@@ -418,72 +402,67 @@ const makeMessages = Effect.fnUntraced(
 )
 
 const makeResponse = Effect.fnUntraced(
-  function*(response: ConverseResponse, modelId: string) {
+  function*(response: ChatResponse, modelId: string) {
     const parts: Array<AiResponse.Part> = []
     parts.push(
       new AiResponse.MetadataPart({
         model: modelId
       }, constDisableValidation)
     )
-    const finishReason = InternalUtilities.resolveFinishReason(response.stopReason)
+    const [choice] = response.choices
+    if (!Schema.is(NonStreamingChoice)(choice)) {
+      return yield* new AiError({
+        module: "OpenrouterLanguageModel",
+        method: "TODO",
+        description: "Response contained no choices"
+      })
+    }
+    const initialFinishReason = (() => {
+      const initialFinishReason = choice.finish_reason
+      if (typeof initialFinishReason === "string") {
+        return initialFinishReason
+      } else if (Array.isArray(initialFinishReason)) {
+        return initialFinishReason[0] as typeof StopReason.Encoded
+      }
+      return "stop"
+    })()
+
+    const finishReason = InternalUtilities.resolveFinishReason(initialFinishReason)
     const metadata: Mutable<ProviderMetadata.Service> = {
-      metrics: response.metrics
+      // metrics: response.metrics
     }
-    if (Predicate.isNotUndefined(response.trace)) {
-      metadata.trace = response.trace
-    }
-    if (Predicate.isNotUndefined(response.performanceConfig)) {
-      metadata.performanceConfig = response.performanceConfig
-    }
+    // if (Predicate.isNotUndefined(response.trace)) {
+    //   metadata.trace = response.trace
+    // }
+    // if (Predicate.isNotUndefined(response.performanceConfig)) {
+    //   metadata.performanceConfig = response.performanceConfig
+    // }
+
     parts.push(
       new AiResponse.FinishPart({
         reason: finishReason,
         usage: {
-          inputTokens: response.usage.inputTokens,
-          outputTokens: response.usage.outputTokens,
-          totalTokens: response.usage.totalTokens,
-          reasoningTokens: 0,
-          cacheReadInputTokens: response.usage.cacheReadInputTokens ?? 0,
-          cacheWriteInputTokens: response.usage.cacheWriteInputTokens ?? 0
+          // TODO: under what conditions does OpenRouter not return these values?
+          inputTokens: response.usage!.prompt_tokens,
+          outputTokens: response.usage!.completion_tokens,
+          totalTokens: response.usage!.total_tokens,
+          reasoningTokens: 0, // TODO
+          cacheReadInputTokens: 0, // TODO
+          cacheWriteInputTokens: 0 // TODO
         },
         providerMetadata: { [InternalUtilities.ProviderMetadataKey]: metadata }
       }, constDisableValidation)
     )
-    for (const part of response.output.message.content) {
-      if ("text" in part) {
-        parts.push(
-          new AiResponse.TextPart({
-            text: part.text
-          }, constDisableValidation)
-        )
-      }
-      if ("reasoningContent" in part) {
-        const content = part.reasoningContent
-        if ("reasoningText" in content) {
-          parts.push(
-            new AiResponse.ReasoningPart({
-              reasoningText: content.reasoningText.text,
-              signature: content.reasoningText.signature
-            }, constDisableValidation)
-          )
-        }
-        if ("redactedContent" in content) {
-          parts.push(
-            new AiResponse.RedactedReasoningPart({
-              redactedText: Encoding.encodeBase64(content.redactedContent)
-            }, constDisableValidation)
-          )
-        }
-      }
-      if ("toolUse" in part) {
-        parts.push(
-          AiResponse.ToolCallPart.fromUnknown({
-            id: part.toolUse.toolUseId,
-            name: part.toolUse.name,
-            params: part.toolUse.input
-          })
-        )
-      }
+    if (choice.message.tool_calls) {
+      // TODO
+      throw 0
+    }
+    if (choice.message.content) {
+      parts.push(
+        new AiResponse.TextPart({
+          text: choice.message.content
+        }, constDisableValidation)
+      )
     }
     return new AiResponse.AiResponse({
       parts
@@ -491,31 +470,20 @@ const makeResponse = Effect.fnUntraced(
   }
 )
 
-/**
- * Amazon Bedrock does not allow trailing whitespace in pre-fillled assistant
- * responses, so we trim the final text part here if it's the last message in
- * the group.
- */
-const trimIfLast = (
-  isLastGroup: boolean,
-  isLastMessage: boolean,
-  isLastPart: boolean,
-  text: string
-) => isLastGroup && isLastMessage && isLastPart ? text.trim() : text
-
 const annotateRequest = (
   span: Span,
-  request: typeof ConverseRequest.Encoded
+  request: typeof ChatRequest.Encoded
 ): void => {
   addGenAIAnnotations(span, {
     system: "anthropic",
     operation: { name: "chat" },
     request: {
-      model: request.modelId,
-      temperature: request.inferenceConfig?.temperature,
-      topP: request.inferenceConfig?.topP,
-      maxTokens: request.inferenceConfig?.maxTokens,
-      stopSequences: request.inferenceConfig?.stopSequences ?? []
+      model: request.model
+      // TODO:
+      // temperature: request.inferenceConfig?.temperature,
+      // topP: request.inferenceConfig?.topP,
+      // maxTokens: request.inferenceConfig?.maxTokens,
+      // stopSequences: request.inferenceConfig?.stopSequences ?? []
     }
   })
 }

@@ -1942,53 +1942,6 @@ export const transposeOption: <A = never, E = never, R = never>(
  */
 export const fromNullishOr: <A>(value: A) => Effect<NonNullable<A>, Cause.NoSuchElementError> = internal.fromNullishOr
 
-/**
- * Runs an effect and fails with a `NoSuchElementError` when its success value
- * is `null` or `undefined`.
- *
- * **When to use**
- *
- * Use when an effect produces a nullable value and you want to treat absence
- * as a failure instead of checking for `null` or `undefined` manually.
- *
- * **Details**
- *
- * This is equivalent to `Effect.flatMap(self, Effect.fromNullishOr)`. Existing
- * failures of `self` are preserved and `NoSuchElementError` is added to the
- * error channel.
- *
- * **Example** (Failing when a lookup returns undefined)
- *
- * ```ts import.meta.vitest
- * import { Effect, Option } from "effect"
- *
- * const users: Record<string, string> = { "1": "Alice" }
- *
- * const findUser = (id: string) => Effect.sync(() => users[id])
- *
- * //      ┌─── Effect<string, NoSuchElementError, never>
- * //      ▼
- * const program = Effect.fromNullishOrEffect(findUser("1"))
- *
- * Effect.runSync(program) // => "Alice"
- *
- * const missing = Effect.fromNullishOrEffect(findUser("2")).pipe(
- *   Effect.catchNoSuchElement
- * )
- *
- * Effect.runSync(missing) // => Option.none()
- * ```
- *
- * @see {@link fromNullishOr} for the version that takes a plain value
- * @see {@link catchNoSuchElement} for recovering from the resulting failure
- *
- * @category converting
- * @since 4.0.0
- */
-export const fromNullishOrEffect: <A, E, R>(
-  self: Effect<A, E, R>
-) => Effect<NonNullable<A>, E | Cause.NoSuchElementError, R> = internal.fromNullishOrEffect
-
 // -----------------------------------------------------------------------------
 // Mapping
 // -----------------------------------------------------------------------------

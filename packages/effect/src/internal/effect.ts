@@ -1025,11 +1025,6 @@ export const fromNullishOr = <A>(value: A): Effect.Effect<NonNullable<A>, Cause.
   value == null ? fail(new NoSuchElementError()) : succeed(value)
 
 /** @internal */
-export const fromNullishOrEffect = <A, E, R>(
-  self: Effect.Effect<A, E, R>
-): Effect.Effect<NonNullable<A>, E | Cause.NoSuchElementError, R> => flatMap(self, fromNullishOr)
-
-/** @internal */
 export const yieldNowWith: (priority?: number) => Effect.Effect<void> = makePrimitive({
   op: "Yield",
   [evaluate](fiber) {

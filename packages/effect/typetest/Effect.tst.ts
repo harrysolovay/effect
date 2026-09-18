@@ -284,6 +284,44 @@ describe("Effect.transposeOption", () => {
   })
 })
 
+describe("Effect.fromNullishOrEffect", () => {
+  it("strips null and undefined and adds NoSuchElementError", () => {
+    const nullable: Effect.Effect<string | null | undefined, "err-1", "dep-1"> = Effect.succeed("a")
+    const result = Effect.fromNullishOrEffect(nullable)
+    expect(result).type.toBe<Effect.Effect<string, "err-1" | Cause.NoSuchElementError, "dep-1">>()
+  })
+})
+
+describe("Effect.get", () => {
+  it("selects a property in data-first form", () => {
+    const user: Effect.Effect<{ readonly id: number; readonly name: string }, "err-1", "dep-1"> = Effect.succeed({
+      id: 1,
+      name: "a"
+    })
+    const result = Effect.get(user, "name")
+    expect(result).type.toBe<Effect.Effect<string, "err-1", "dep-1">>()
+  })
+
+  it("selects a property in pipeable form", () => {
+    const user: Effect.Effect<{ readonly id: number; readonly name: string }, "err-1", "dep-1"> = Effect.succeed({
+      id: 1,
+      name: "a"
+    })
+    const result = user.pipe(Effect.get("id"))
+    expect(result).type.toBe<Effect.Effect<number, "err-1", "dep-1">>()
+    const piped = pipe(user, Effect.get("id"))
+    expect(piped).type.toBe<Effect.Effect<number, "err-1", "dep-1">>()
+  })
+
+  it("rejects unknown keys", () => {
+    const user = Effect.succeed({ id: 1 })
+    // @ts-expect-error is not assignable to parameter
+    Effect.get(user, "missing")
+    // @ts-expect-error is not assignable to parameter
+    user.pipe(Effect.get("missing"))
+  })
+})
+
 describe("Effect.fromOption", () => {
   it("uses NoSuchElementError by default", () => {
     const result = Effect.fromOption(optionString)

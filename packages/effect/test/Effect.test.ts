@@ -299,6 +299,55 @@ describe("Effect", () => {
       }))
   })
 
+  describe("fromNullishOrEffect", () => {
+    it.effect("succeeds with a non-nullish value", () =>
+      Effect.gen(function*() {
+        const result = yield* Effect.fromNullishOrEffect(Effect.succeed("value" as string | null | undefined))
+        assert.strictEqual(result, "value")
+      }))
+
+    it.effect("fails with NoSuchElementError on null", () =>
+      Effect.gen(function*() {
+        const result = yield* Effect.fromNullishOrEffect(Effect.succeed(null as string | null)).pipe(Effect.exit)
+        assert.deepStrictEqual(result, Exit.fail(new Cause.NoSuchElementError()))
+      }))
+
+    it.effect("fails with NoSuchElementError on undefined", () =>
+      Effect.gen(function*() {
+        const result = yield* Effect.fromNullishOrEffect(Effect.succeed(undefined as string | undefined)).pipe(
+          Effect.catchNoSuchElement
+        )
+        assert.deepStrictEqual(result, Option.none())
+      }))
+
+    it.effect("preserves existing failures", () =>
+      Effect.gen(function*() {
+        const result = yield* Effect.fromNullishOrEffect(Effect.fail("error" as const)).pipe(Effect.exit)
+        assert.deepStrictEqual(result, Exit.fail("error"))
+      }))
+  })
+
+  describe("get", () => {
+    it.effect("selects a property in pipeable form", () =>
+      Effect.gen(function*() {
+        const result = yield* Effect.succeed({ id: 1, name: "Alice" }).pipe(Effect.get("name"))
+        assert.strictEqual(result, "Alice")
+      }))
+
+    it.effect("selects a property in data-first form", () =>
+      Effect.gen(function*() {
+        const result = yield* Effect.get(Effect.succeed({ id: 1, name: "Alice" }), "id")
+        assert.strictEqual(result, 1)
+      }))
+
+    it.effect("preserves failures", () =>
+      Effect.gen(function*() {
+        const effect: Effect.Effect<{ id: number }, "error"> = Effect.fail("error")
+        const result = yield* Effect.get(effect, "id").pipe(Effect.exit)
+        assert.deepStrictEqual(result, Exit.fail("error"))
+      }))
+  })
+
   describe("fromResult", () => {
     it.effect("from a success", () =>
       Result.succeed("A").pipe(

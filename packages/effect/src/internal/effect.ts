@@ -1025,6 +1025,11 @@ export const fromNullishOr = <A>(value: A): Effect.Effect<NonNullable<A>, Cause.
   value == null ? fail(new NoSuchElementError()) : succeed(value)
 
 /** @internal */
+export const fromNullishOrEffect = <A, E, R>(
+  self: Effect.Effect<A, E, R>
+): Effect.Effect<NonNullable<A>, E | Cause.NoSuchElementError, R> => flatMap(self, fromNullishOr)
+
+/** @internal */
 export const yieldNowWith: (priority?: number) => Effect.Effect<void> = makePrimitive({
   op: "Yield",
   [evaluate](fiber) {
@@ -1534,6 +1539,16 @@ const tapEffectCont = function(this: { readonly payload: any }, value: any) {
 export const asSome = <A, E, R>(
   self: Effect.Effect<A, E, R>
 ): Effect.Effect<Option.Option<A>, E, R> => map(self, Option.some)
+
+/** @internal */
+export const get: {
+  <A, const K extends keyof A>(key: K): <E, R>(self: Effect.Effect<A, E, R>) => Effect.Effect<A[K], E, R>
+  <A, E, R, const K extends keyof A>(self: Effect.Effect<A, E, R>, key: K): Effect.Effect<A[K], E, R>
+} = dual(
+  2,
+  <A, E, R, const K extends keyof A>(self: Effect.Effect<A, E, R>, key: K): Effect.Effect<A[K], E, R> =>
+    map(self, (a) => a[key])
+)
 
 /** @internal */
 export const flip = <A, E, R>(
